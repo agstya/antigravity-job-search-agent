@@ -2,6 +2,11 @@
 # Job Sources Configuration
 # =============================================================================
 # Each source has: name, type, url/company_slug, enabled
+# Types: remoteok_api, rss, greenhouse, lever
+
+# =============================================================================
+# Aggregators — broad job boards
+# =============================================================================
 
 sources:
   - name: RemoteOK
@@ -14,9 +19,68 @@ sources:
     url: https://weworkremotely.com/remote-jobs.rss
     enabled: true
 
-  # -- Greenhouse Company Boards -----------------------------------------------
-  # Add companies that use Greenhouse for their job boards.
-  # Find the slug from: https://boards.greenhouse.io/{company_slug}
+  - name: HN Who Is Hiring
+    type: rss
+    url: https://hnrss.org/whoishiring/jobs
+    enabled: true
+
+  # ===========================================================================
+  # Big Tech / FAANG+
+  # ===========================================================================
+
+  - name: Google (Alphabet)
+    type: lever
+    company_slug: google
+    enabled: true
+
+  - name: Netflix
+    type: lever
+    company_slug: netflix
+    enabled: true
+
+  - name: Stripe
+    type: greenhouse
+    company_slug: stripe
+    enabled: true
+
+  - name: Figma
+    type: greenhouse
+    company_slug: figma
+    enabled: true
+
+  - name: Datadog
+    type: greenhouse
+    company_slug: datadog
+    enabled: true
+
+  - name: Cloudflare
+    type: greenhouse
+    company_slug: cloudflare
+    enabled: true
+
+  - name: Databricks
+    type: greenhouse
+    company_slug: databricks
+    enabled: true
+
+  - name: Snowflake
+    type: greenhouse
+    company_slug: snowflakejobs
+    enabled: true
+
+  - name: Plaid
+    type: lever
+    company_slug: plaid
+    enabled: true
+
+  - name: Twilio
+    type: greenhouse
+    company_slug: twilio
+    enabled: true
+
+  # ===========================================================================
+  # AI / ML Companies
+  # ===========================================================================
 
   - name: Anthropic
     type: greenhouse
@@ -28,22 +92,187 @@ sources:
     company_slug: openai
     enabled: true
 
-  - name: Figma
-    type: greenhouse
-    company_slug: figma
-    enabled: false
-
-  # -- Lever Company Boards ----------------------------------------------------
-  # Add companies that use Lever for their job boards.
-  # Find the slug from: https://jobs.lever.co/{company_slug}
-
-  - name: Netflix
+  - name: Cohere
     type: lever
-    company_slug: netflix
-    enabled: false
+    company_slug: cohere
+    enabled: true
 
-  # -- Custom RSS Feeds --------------------------------------------------------
-  - name: HN Who Is Hiring
-    type: rss
-    url: https://hnrss.org/whoishiring/jobs
-    enabled: false
+  - name: Mistral AI
+    type: greenhouse
+    company_slug: mistral
+    enabled: true
+
+  - name: Hugging Face
+    type: lever
+    company_slug: huggingface
+    enabled: true
+
+  - name: Scale AI
+    type: lever
+    company_slug: scaleai
+    enabled: true
+
+  - name: Perplexity
+    type: greenhouse
+    company_slug: perplexityai
+    enabled: true
+
+  - name: Stability AI
+    type: lever
+    company_slug: stabilityai
+    enabled: true
+
+  - name: Adept AI
+    type: lever
+    company_slug: adeptailabs
+    enabled: true
+
+  - name: Character AI
+    type: greenhouse
+    company_slug: characterai
+    enabled: true
+
+  # ===========================================================================
+  # Unicorns & High-Growth Startups
+  # ===========================================================================
+
+  - name: Notion
+    type: greenhouse
+    company_slug: notion
+    enabled: true
+
+  - name: Vercel
+    type: greenhouse
+    company_slug: vercel
+    enabled: true
+
+  - name: Linear
+    type: lever
+    company_slug: linear
+    enabled: true
+
+  - name: Retool
+    type: greenhouse
+    company_slug: retool
+    enabled: true
+
+  - name: Supabase
+    type: greenhouse
+    company_slug: supabase
+    enabled: true
+
+  - name: Airtable
+    type: greenhouse
+    company_slug: airtable
+    enabled: true
+
+  - name: Rippling
+    type: greenhouse
+    company_slug: rippling
+    enabled: true
+
+  - name: Ramp
+    type: greenhouse
+    company_slug: ramp
+    enabled: true
+
+  - name: Brex
+    type: greenhouse
+    company_slug: brex
+    enabled: true
+
+  - name: Discord
+    type: greenhouse
+    company_slug: discord
+    enabled: true
+
+  # ===========================================================================
+  # Fintech & Finance
+  # ===========================================================================
+
+  - name: Robinhood
+    type: greenhouse
+    company_slug: robinhood
+    enabled: true
+
+  - name: Coinbase
+    type: greenhouse
+    company_slug: coinbase
+    enabled: true
+
+  - name: Square (Block)
+    type: greenhouse
+    company_slug: block
+    enabled: true
+
+  # ===========================================================================
+  # Consulting / Strategy
+  # ===========================================================================
+
+  - name: McKinsey & Company
+    type: lever
+    company_slug: mckinsey
+    enabled: true
+
+  - name: Boston Consulting Group
+    type: lever
+    company_slug: bcg
+    enabled: true
+
+  - name: Bain & Company
+    type: lever
+    company_slug: bain
+    enabled: true
+
+  - name: Palantir Technologies
+    type: lever
+    company_slug: palantir
+    enabled: true
+
+  # ===========================================================================
+  # Cybersecurity & Infrastructure
+  # ===========================================================================
+
+  - name: CrowdStrike
+    type: greenhouse
+    company_slug: crowdstrike
+    enabled: true
+
+  - name: Palo Alto Networks
+    type: greenhouse
+    company_slug: paloaltonetworks2
+    enabled: true
+
+  - name: HashiCorp
+    type: greenhouse
+    company_slug: hashicorp
+    enabled: true
+
+  # ===========================================================================
+  # Enterprise / SaaS
+  # ===========================================================================
+
+  - name: Confluent
+    type: greenhouse
+    company_slug: confluent
+    enabled: true
+
+  - name: MongoDB
+    type: greenhouse
+    company_slug: mongodb
+    enabled: true
+
+  - name: Elastic
+    type: greenhouse
+    company_slug: elastic
+    enabled: true
+
+  - name: GitLab
+    type: greenhouse
+    company_slug: gitlab
+    enabled: true
+
+  - name: Atlassian
+    type: greenhouse
+    company_slug: atlassian
+    enabled: true

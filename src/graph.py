@@ -154,76 +154,34 @@ def normalize_dates_node(state: PipelineState) -> dict:
 
 
 def hard_filter_node(state: PipelineState) -> dict:
-    """Apply deterministic filters based on criteria."""
-    logger.info("=== Node 5: Hard Filter ===")
+    """Pass all jobs through — no hard filtering.
+
+    Keyword match counts are still computed and stored for relevance sorting,
+    but no jobs are removed. This maximizes the number of jobs sent to the
+    LLM scoring step.
+    """
+    logger.info("=== Node 5: Soft Annotation (no hard filter) ===")
 
     raw_jobs = state.get("raw_jobs", [])
     criteria = state.get("criteria")
-    if not criteria:
-        logger.error("No criteria available — skipping hard filter")
-        return {"filtered_jobs": raw_jobs, "total_filtered": len(raw_jobs)}
-
-    filtered: list[JobModel] = []
 
     for job in raw_jobs:
-        # 1. Remote check
-        if criteria.fully_remote and job.remote_type not in (
-            RemoteType.REMOTE, RemoteType.UNKNOWN
-        ):
-            continue
-
-        # 2. Employment type check
-        if criteria.avoid_contract and job.employment_type == EmploymentType.CONTRACT:
-            continue
-        if criteria.avoid_hourly and job.employment_type == EmploymentType.HOURLY:
-            continue
-        if criteria.full_time_only and job.employment_type in (
-            EmploymentType.PART_TIME, EmploymentType.INTERNSHIP
-        ):
-            continue
-
-        # 3. Date check
-        if criteria.posted_within_days and job.posted_date:
-            try:
-                posted_dt = datetime.fromisoformat(job.posted_date.replace("Z", "+00:00"))
-                cutoff = datetime.now(timezone.utc) - timedelta(days=criteria.posted_within_days)
-                if posted_dt < cutoff:
-                    continue
-            except (ValueError, TypeError):
-                pass  # Keep jobs with unparseable dates
-
-        # 4. Salary check (if available)
-        if job.salary_max and criteria.min_salary:
-            if job.salary_max < criteria.min_salary:
-                continue
-        if job.salary_min and criteria.max_salary:
-            if job.salary_min > criteria.max_salary:
-                continue
-
-        # 5. Exclude keywords
-        if criteria.exclude_keywords:
-            text_lower = (job.title + " " + job.description).lower()
-            excluded = any(kw.lower() in text_lower for kw in criteria.exclude_keywords)
-            if excluded:
-                continue
-
-        # 6. Keyword matching (at least min_keyword_matches)
-        if criteria.keywords:
+        # Compute keyword match count for relevance sorting
+        if criteria and criteria.keywords:
             text_lower = (job.title + " " + job.description).lower()
             matches = sum(
                 1 for kw in criteria.keywords if kw.lower() in text_lower
             )
-            if matches < criteria.min_keyword_matches:
-                continue
+            # Store match count in flags for downstream sorting
+            job.flags.append(f"keyword_matches:{matches}")
 
         job.hard_filter_passed = True
-        filtered.append(job)
 
     logger.info(
-        "Hard filter: %d → %d jobs (%d removed)",
-        len(raw_jobs), len(filtered), len(raw_jobs) - len(filtered),
+        "Soft annotation: all %d jobs passed through (no filtering)",
+        len(raw_jobs),
     )
-    return {"filtered_jobs": filtered, "total_filtered": len(filtered)}
+    return {"filtered_jobs": raw_jobs, "total_filtered": len(raw_jobs)}
 
 
 # =============================================================================
@@ -370,14 +328,25 @@ def generate_report_node(state: PipelineState) -> dict:
     criteria = state.get("criteria")
     run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
 
-    # Sort: score desc, reputation desc, date desc
-    new_jobs.sort(
-        key=lambda j: (
+    # Sort by relevance: keyword matches (desc), LLM score (desc),
+    # reputation (desc), then date (newest first).
+    def _relevance_key(j: JobModel) -> tuple:
+        # Extract keyword_matches count from flags
+        kw_count = 0
+        for flag in j.flags:
+            if flag.startswith("keyword_matches:"):
+                try:
+                    kw_count = int(flag.split(":")[1])
+                except (ValueError, IndexError):
+                    pass
+        return (
+            kw_count,
             j.llm_score or 0,
             j.reputation_score or 0,
-        ),
-        reverse=True,
-    )
+            j.posted_date or "",
+        )
+
+    new_jobs.sort(key=_relevance_key, reverse=True)
 
     # Limit results
     max_results = criteria.max_results_per_email if criteria else 30
@@ -407,28 +376,20 @@ def generate_report_node(state: PipelineState) -> dict:
 
 
 def send_email_node(state: PipelineState) -> dict:
-    """Send report via Gmail SMTP."""
+    """Send report via Gmail SMTP — always sends, even if no new jobs found."""
     logger.info("=== Node 10: Send Email ===")
 
     no_email = state.get("no_email", False)
-    dry_run = state.get("dry_run", False)
 
     if no_email:
         logger.info("Email sending disabled (--no-email)")
-        return {"email_sent": False}
-
-    if dry_run:
-        logger.info("Dry run — skipping email send")
         return {"email_sent": False}
 
     report_html = state.get("report_html", "")
     report_md = state.get("report_md", "")
     run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
     total_new = state.get("total_new", 0)
-
-    if total_new == 0:
-        logger.info("No new jobs found — skipping email")
-        return {"email_sent": False}
+    total_fetched = state.get("total_fetched", 0)
 
     try:
         gmail_address = os.getenv("GMAIL_ADDRESS", "")
@@ -439,7 +400,11 @@ def send_email_node(state: PipelineState) -> dict:
             logger.warning("Gmail credentials not configured — skipping email")
             return {"email_sent": False}
 
-        subject = f"Daily Agentic AI Job Matches — {run_date}"
+        if total_new > 0:
+            subject = f"🔍 {total_new} New Job Matches — {run_date}"
+        else:
+            subject = f"📋 Job Search Report ({total_fetched} scanned, 0 new) — {run_date}"
+
         send_report_email(
             html_body=report_html,
             text_body=report_md,

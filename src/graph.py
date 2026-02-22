@@ -249,7 +249,13 @@ def semantic_score_node(state: PipelineState) -> dict:
             job.is_match = True
             job.llm_reasons = ["Dry run — no LLM scoring performed"]
             job.llm_confidence = "low"
-        return {"scored_jobs": filtered_jobs, "total_scored": len(filtered_jobs)}
+        return {
+            "scored_jobs": filtered_jobs,
+            "matched_jobs": filtered_jobs,
+            "borderline_jobs": [],
+            "total_scored": len(filtered_jobs),
+            "total_matched": len(filtered_jobs),
+        }
 
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = os.getenv("OLLAMA_MODEL", "llama3")

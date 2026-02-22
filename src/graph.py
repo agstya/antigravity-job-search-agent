@@ -395,29 +395,19 @@ def generate_report_node(state: PipelineState) -> dict:
     else:
         display_source = new_jobs
 
-    # Sort by relevance: keyword matches (desc), LLM score (desc),
-    # reputation (desc), then date (newest first).
-    def _relevance_key(j: JobModel) -> tuple:
-        # Extract keyword_matches count from flags
-        kw_count = 0
-        for flag in j.flags:
-            if flag.startswith("keyword_matches:"):
-                try:
-                    kw_count = int(flag.split(":")[1])
-                except (ValueError, IndexError):
-                    pass
-        return (
-            kw_count,
-            j.llm_score or 0,
-            j.reputation_score or 0,
-            j.posted_date or "",
-        )
+    # Sort all jobs by date posted (newest first)
+    def _date_sort_key(j: JobModel) -> str:
+        return j.posted_date or ""
 
-    display_source.sort(key=_relevance_key, reverse=True)
+    display_source.sort(key=_date_sort_key, reverse=True)
 
-    # Limit results
-    max_results = criteria.max_results_per_email if criteria else 30
-    display_jobs = display_source[:max_results]
+    # Show all 100 results
+    display_jobs = display_source[:100]
+
+    # Split into Remote and Non-Remote sections
+    from src.models.job import RemoteType
+    remote_jobs = [j for j in display_jobs if j.remote_type == RemoteType.REMOTE]
+    non_remote_jobs = [j for j in display_jobs if j.remote_type != RemoteType.REMOTE]
 
     stats = {
         "run_date": run_date,
@@ -426,10 +416,13 @@ def generate_report_node(state: PipelineState) -> dict:
         "total_filtered": state.get("total_filtered", 0),
         "total_matched": state.get("total_matched", 0),
         "total_new": state.get("total_new", 0),
+        "total_showing": len(display_jobs),
+        "total_remote": len(remote_jobs),
+        "total_non_remote": len(non_remote_jobs),
     }
 
-    report_md = render_markdown(display_jobs, borderline_jobs, stats)
-    report_html = render_html(display_jobs, borderline_jobs, stats)
+    report_md = render_markdown(remote_jobs, non_remote_jobs, stats)
+    report_html = render_html(remote_jobs, non_remote_jobs, stats)
 
     # Save reports
     save_report(report_md, report_html, run_date)

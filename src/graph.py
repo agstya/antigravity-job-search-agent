@@ -337,13 +337,22 @@ def deduplicate_persist_node(state: PipelineState) -> dict:
 
 
 def generate_report_node(state: PipelineState) -> dict:
-    """Generate markdown and HTML reports."""
+    """Generate markdown and HTML reports.
+
+    Always shows top matched jobs — even if they've all been seen in prior runs.
+    The 'new' count is tracked in stats but does NOT control what is displayed.
+    """
     logger.info("=== Node 9: Generate Report ===")
 
+    # Use ALL matched jobs for the report, not just new ones
+    matched_jobs = state.get("matched_jobs", [])
     new_jobs = state.get("new_jobs", [])
     borderline_jobs = state.get("borderline_jobs", [])
     criteria = state.get("criteria")
     run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
+
+    # Pick the best available set — prefer matched (all scored) over new-only
+    display_source = matched_jobs if matched_jobs else new_jobs
 
     # Sort by relevance: keyword matches (desc), LLM score (desc),
     # reputation (desc), then date (newest first).
@@ -363,11 +372,11 @@ def generate_report_node(state: PipelineState) -> dict:
             j.posted_date or "",
         )
 
-    new_jobs.sort(key=_relevance_key, reverse=True)
+    display_source.sort(key=_relevance_key, reverse=True)
 
     # Limit results
     max_results = criteria.max_results_per_email if criteria else 30
-    display_jobs = new_jobs[:max_results]
+    display_jobs = display_source[:max_results]
 
     stats = {
         "run_date": run_date,

@@ -29,13 +29,14 @@ def render_markdown(
     # Summary
     lines.append("## Summary")
     lines.append(f"- **Total fetched**: {stats.get('total_fetched', 0)}")
-    lines.append(f"- **Passed hard filter**: {stats.get('total_filtered', 0)}")
-    lines.append(f"- **Semantic matches**: {stats.get('total_matched', 0)}")
+    lines.append(f"- **Keyword annotated**: {stats.get('total_filtered', 0)}")
+    lines.append(f"- **Top scored**: {stats.get('total_matched', 0)}")
     lines.append(f"- **New (not seen before)**: {stats.get('total_new', 0)}")
+    lines.append(f"- **Showing in report**: {len(jobs)}")
     lines.append("")
 
     if not jobs:
-        lines.append("*No new matching jobs found today.*")
+        lines.append("*No jobs were fetched — check your sources.yaml configuration.*")
         return "\n".join(lines)
 
     # Main matches
@@ -157,14 +158,14 @@ def render_html(
     html_parts.append(f"""
 <div class="stats">
   <div class="stat-card"><div class="label">Fetched</div><div class="value">{stats.get('total_fetched', 0)}</div></div>
-  <div class="stat-card"><div class="label">Hard Filter</div><div class="value">{stats.get('total_filtered', 0)}</div></div>
-  <div class="stat-card"><div class="label">Semantic Match</div><div class="value">{stats.get('total_matched', 0)}</div></div>
-  <div class="stat-card"><div class="label">New Today</div><div class="value">{stats.get('total_new', 0)}</div></div>
+  <div class="stat-card"><div class="label">Annotated</div><div class="value">{stats.get('total_filtered', 0)}</div></div>
+  <div class="stat-card"><div class="label">Top Scored</div><div class="value">{stats.get('total_matched', 0)}</div></div>
+  <div class="stat-card"><div class="label">Showing</div><div class="value">{len(jobs)}</div></div>
 </div>
 """)
 
     if not jobs:
-        html_parts.append('<div class="no-results">No new matching jobs found today.</div>')
+        html_parts.append('<div class="no-results">No jobs were fetched — check your sources.yaml configuration.</div>')
     else:
         for i, job in enumerate(jobs, 1):
             score = job.llm_score or 0

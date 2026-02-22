@@ -232,10 +232,27 @@ def semantic_score_node(state: PipelineState) -> dict:
             "total_matched": len(top_jobs),
         }
 
+    # Pre-filter to top 100 by keyword relevance before expensive LLM scoring
+    def _kw_count_full(job: JobModel) -> int:
+        for flag in job.flags:
+            if flag.startswith("keyword_matches:"):
+                try:
+                    return int(flag.split(":")[1])
+                except (ValueError, IndexError):
+                    pass
+        return 0
+
+    filtered_jobs.sort(key=_kw_count_full, reverse=True)
+    top_candidates = filtered_jobs[:100]
+    logger.info(
+        "Pre-filtered to top %d of %d jobs by keyword relevance for LLM scoring",
+        len(top_candidates), len(filtered_jobs),
+    )
+
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     model = os.getenv("OLLAMA_MODEL", "llama3")
 
-    scored_jobs = score_jobs_batch(filtered_jobs, criteria, ollama_url, model)
+    scored_jobs = score_jobs_batch(top_candidates, criteria, ollama_url, model)
 
     # Split into matched and borderline
     min_score = criteria.min_llm_score
@@ -244,6 +261,20 @@ def semantic_score_node(state: PipelineState) -> dict:
         j for j in scored_jobs
         if j.llm_score is not None and j.llm_score == min_score - 1
     ]
+
+    # Fallback: if LLM scoring failed for all jobs, treat top candidates as matched
+    if not matched and top_candidates:
+        logger.warning(
+            "LLM scoring produced 0 matches — falling back to top %d keyword-matched jobs",
+            len(top_candidates),
+        )
+        for job in top_candidates:
+            if job.llm_score is None:
+                job.llm_score = 5
+                job.is_match = True
+                job.llm_reasons = ["LLM scoring unavailable — matched by keyword relevance"]
+                job.llm_confidence = "low"
+        matched = top_candidates
 
     logger.info(
         "Scoring complete: %d matched (score >= %d), %d borderline",
@@ -346,13 +377,23 @@ def generate_report_node(state: PipelineState) -> dict:
 
     # Use ALL matched jobs for the report, not just new ones
     matched_jobs = state.get("matched_jobs", [])
+    scored_jobs = state.get("scored_jobs", [])
+    filtered_jobs = state.get("filtered_jobs", [])
     new_jobs = state.get("new_jobs", [])
     borderline_jobs = state.get("borderline_jobs", [])
     criteria = state.get("criteria")
     run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
 
-    # Pick the best available set — prefer matched (all scored) over new-only
-    display_source = matched_jobs if matched_jobs else new_jobs
+    # Cascade fallback: matched → scored → filtered → new
+    # Ensures the report NEVER shows zero results if jobs were fetched
+    if matched_jobs:
+        display_source = matched_jobs
+    elif scored_jobs:
+        display_source = scored_jobs
+    elif filtered_jobs:
+        display_source = filtered_jobs[:100]
+    else:
+        display_source = new_jobs
 
     # Sort by relevance: keyword matches (desc), LLM score (desc),
     # reputation (desc), then date (newest first).

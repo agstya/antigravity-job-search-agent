@@ -1,4 +1,4 @@
-"""Job source fetchers — RemoteOK API, RSS feeds, Greenhouse, Lever."""
+"""Job source fetchers — RemoteOK, Remotive, Greenhouse JSON, Lever, Jobicy, Himalayas, RSS."""
 
 from __future__ import annotations
 
@@ -213,13 +213,16 @@ def fetch_rss(url: str, source_name: str = "RSS") -> list[JobModel]:
 
 
 # =============================================================================
-# Greenhouse RSS
+# Greenhouse JSON API (replaces broken RSS)
 # =============================================================================
 
 
 def fetch_greenhouse(company_slug: str) -> list[JobModel]:
-    """Fetch jobs from a Greenhouse company job board RSS feed."""
-    url = f"https://boards.greenhouse.io/{company_slug}.rss"
+    """Fetch jobs from Greenhouse public JSON API.
+
+    Endpoint: GET https://boards-api.greenhouse.io/v1/boards/{company}/jobs
+    """
+    url = f"https://boards-api.greenhouse.io/v1/boards/{company_slug}/jobs?content=true"
     source_name = f"Greenhouse ({company_slug})"
 
     jobs: list[JobModel] = []
@@ -231,34 +234,38 @@ def fetch_greenhouse(company_slug: str) -> list[JobModel]:
             follow_redirects=True,
         )
         response.raise_for_status()
-        feed = feedparser.parse(response.text)
+        data = response.json()
 
-        for entry in feed.entries:
+        for item in data.get("jobs", []):
             try:
-                title = entry.get("title", "")
-                link = entry.get("link", "")
-                if not title or not link:
+                title = item.get("title", "")
+                job_url = item.get("absolute_url", "")
+                if not title or not job_url:
                     continue
 
-                desc_html = entry.get("summary", "") or entry.get("description", "")
+                # Description
+                desc_html = item.get("content", "")
                 description = clean_html(desc_html)
 
-                # Location from content or title
-                location = entry.get("location", None)
+                # Location
+                location = None
+                loc_data = item.get("location", {})
+                if isinstance(loc_data, dict):
+                    location = loc_data.get("name", None)
 
                 # Date
                 posted_date = None
-                if entry.get("published_parsed"):
+                updated_at = item.get("updated_at") or item.get("created_at")
+                if updated_at:
                     try:
-                        from time import mktime
-                        dt = datetime.fromtimestamp(
-                            mktime(entry.published_parsed), tz=timezone.utc
-                        )
+                        dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
                         posted_date = dt.isoformat()
-                    except Exception:
+                    except (ValueError, TypeError):
                         pass
 
-                remote_type = _infer_remote_type(title + " " + description)
+                remote_type = _infer_remote_type(
+                    title + " " + description + " " + (location or "")
+                )
                 employment_type = _infer_employment_type(title + " " + description)
                 salary_text, salary_min, salary_max = _extract_salary(description)
 
@@ -266,7 +273,7 @@ def fetch_greenhouse(company_slug: str) -> list[JobModel]:
                     JobModel(
                         title=title,
                         company=company_slug.replace("-", " ").title(),
-                        url=link,
+                        url=job_url,
                         source=source_name,
                         posted_date=posted_date,
                         employment_type=employment_type,
@@ -280,7 +287,7 @@ def fetch_greenhouse(company_slug: str) -> list[JobModel]:
                     )
                 )
             except Exception as e:
-                logger.warning("Failed to parse Greenhouse entry (%s): %s", company_slug, e)
+                logger.warning("Failed to parse Greenhouse job (%s): %s", company_slug, e)
                 continue
 
         logger.info("Fetched %d jobs from Greenhouse (%s)", len(jobs), company_slug)
@@ -376,6 +383,249 @@ def fetch_lever(company_slug: str) -> list[JobModel]:
 
 
 # =============================================================================
+# Remotive API
+# =============================================================================
+
+
+def fetch_remotive(url: str = "https://remotive.com/api/remote-jobs") -> list[JobModel]:
+    """Fetch jobs from Remotive public API."""
+    jobs: list[JobModel] = []
+    try:
+        response = httpx.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=DEFAULT_TIMEOUT,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        for item in data.get("jobs", []):
+            try:
+                title = item.get("title", "")
+                job_url = item.get("url", "")
+                company = item.get("company_name", "Unknown")
+                if not title or not job_url:
+                    continue
+
+                desc_html = item.get("description", "")
+                description = clean_html(desc_html)
+
+                # Date
+                posted_date = None
+                pub_date = item.get("publication_date")
+                if pub_date:
+                    try:
+                        dt = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                        posted_date = dt.isoformat()
+                    except (ValueError, TypeError):
+                        pass
+
+                # Salary
+                salary_text = item.get("salary", None)
+                salary_min, salary_max = None, None
+                if salary_text:
+                    _, salary_min, salary_max = _extract_salary(salary_text)
+
+                location = item.get("candidate_required_location", "Remote")
+                job_type = item.get("job_type", "")
+                employment_type = _infer_employment_type(
+                    job_type + " " + title
+                ) if job_type else _infer_employment_type(title)
+
+                # Tags
+                tags = item.get("tags", [])
+                if tags and isinstance(tags, list):
+                    description += " " + " ".join(tags)
+
+                jobs.append(
+                    JobModel(
+                        title=title,
+                        company=company,
+                        url=job_url,
+                        source="Remotive",
+                        posted_date=posted_date,
+                        employment_type=employment_type,
+                        remote_type=RemoteType.REMOTE,
+                        salary_text=salary_text,
+                        salary_min=salary_min,
+                        salary_max=salary_max,
+                        location=location,
+                        description=description,
+                        raw_description_html=desc_html[:5000] if desc_html else None,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to parse Remotive item: %s", e)
+                continue
+
+        logger.info("Fetched %d jobs from Remotive", len(jobs))
+    except Exception as e:
+        logger.error("Failed to fetch Remotive: %s", e)
+
+    return jobs
+
+
+# =============================================================================
+# Jobicy API
+# =============================================================================
+
+
+def fetch_jobicy(url: str = "https://jobicy.com/api/v2/remote-jobs") -> list[JobModel]:
+    """Fetch jobs from Jobicy public remote jobs API."""
+    jobs: list[JobModel] = []
+    try:
+        response = httpx.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=DEFAULT_TIMEOUT,
+            follow_redirects=True,
+            params={"count": 50},
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        for item in data.get("jobs", []):
+            try:
+                title = item.get("jobTitle", "")
+                job_url = item.get("url", "")
+                company = item.get("companyName", "Unknown")
+                if not title or not job_url:
+                    continue
+
+                description = item.get("jobDescription", "")
+                if "<" in description:
+                    description = clean_html(description)
+
+                posted_date = None
+                pub_date = item.get("pubDate")
+                if pub_date:
+                    try:
+                        dt = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                        posted_date = dt.isoformat()
+                    except (ValueError, TypeError):
+                        pass
+
+                location = item.get("jobGeo", "Remote")
+                job_type = item.get("jobType", "")
+
+                # Salary
+                salary_min = _parse_int(item.get("annualSalaryMin"))
+                salary_max = _parse_int(item.get("annualSalaryMax"))
+                salary_text = None
+                if salary_min or salary_max:
+                    currency = item.get("salaryCurrency", "USD")
+                    salary_text = f"{currency} {salary_min or '?'}–{salary_max or '?'}"
+
+                jobs.append(
+                    JobModel(
+                        title=title,
+                        company=company,
+                        url=job_url,
+                        source="Jobicy",
+                        posted_date=posted_date,
+                        employment_type=_infer_employment_type(job_type + " " + title),
+                        remote_type=RemoteType.REMOTE,
+                        salary_text=salary_text,
+                        salary_min=salary_min,
+                        salary_max=salary_max,
+                        location=location,
+                        description=description,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to parse Jobicy item: %s", e)
+                continue
+
+        logger.info("Fetched %d jobs from Jobicy", len(jobs))
+    except Exception as e:
+        logger.error("Failed to fetch Jobicy: %s", e)
+
+    return jobs
+
+
+# =============================================================================
+# Himalayas API
+# =============================================================================
+
+
+def fetch_himalayas(url: str = "https://himalayas.app/jobs/api") -> list[JobModel]:
+    """Fetch jobs from Himalayas remote jobs API."""
+    jobs: list[JobModel] = []
+    try:
+        response = httpx.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=DEFAULT_TIMEOUT,
+            follow_redirects=True,
+            params={"limit": 50},
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        for item in data.get("jobs", []):
+            try:
+                title = item.get("title", "")
+                job_url = item.get("applicationUrl") or item.get("url", "")
+                company = item.get("companyName", "Unknown")
+                if not title or not job_url:
+                    continue
+
+                description = item.get("description", "")
+                if "<" in description:
+                    description = clean_html(description)
+
+                posted_date = None
+                pub_date = item.get("pubDate") or item.get("publishedAt")
+                if pub_date:
+                    try:
+                        dt = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                        posted_date = dt.isoformat()
+                    except (ValueError, TypeError):
+                        pass
+
+                location = item.get("location", "Remote")
+
+                # Salary
+                salary_min = _parse_int(item.get("minSalary"))
+                salary_max = _parse_int(item.get("maxSalary"))
+                salary_text = None
+                if salary_min or salary_max:
+                    salary_text = f"${salary_min or '?'}–${salary_max or '?'}"
+
+                # Tags / categories
+                categories = item.get("categories", [])
+                if categories and isinstance(categories, list):
+                    description += " " + " ".join(categories)
+
+                jobs.append(
+                    JobModel(
+                        title=title,
+                        company=company,
+                        url=job_url,
+                        source="Himalayas",
+                        posted_date=posted_date,
+                        employment_type=_infer_employment_type(title + " " + description),
+                        remote_type=RemoteType.REMOTE,
+                        salary_text=salary_text,
+                        salary_min=salary_min,
+                        salary_max=salary_max,
+                        location=location,
+                        description=description,
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to parse Himalayas item: %s", e)
+                continue
+
+        logger.info("Fetched %d jobs from Himalayas", len(jobs))
+    except Exception as e:
+        logger.error("Failed to fetch Himalayas: %s", e)
+
+    return jobs
+
+
+# =============================================================================
 # Orchestrator
 # =============================================================================
 
@@ -413,6 +663,18 @@ def fetch_all_sources(sources_config: list[dict]) -> list[JobModel]:
                     logger.warning("Lever source '%s' has no company_slug — skipping", name)
                     continue
                 jobs = fetch_lever(slug)
+
+            elif source_type == "remotive":
+                url = source.get("url", "https://remotive.com/api/remote-jobs")
+                jobs = fetch_remotive(url)
+
+            elif source_type == "jobicy":
+                url = source.get("url", "https://jobicy.com/api/v2/remote-jobs")
+                jobs = fetch_jobicy(url)
+
+            elif source_type == "himalayas":
+                url = source.get("url", "https://himalayas.app/jobs/api")
+                jobs = fetch_himalayas(url)
 
             else:
                 logger.warning("Unknown source type '%s' for '%s' — skipping", source_type, name)

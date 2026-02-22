@@ -2,7 +2,7 @@
 # Job Sources Configuration
 # =============================================================================
 # Each source has: name, type, url/company_slug, enabled
-# Types: remoteok_api, rss, greenhouse, lever
+# Types: remoteok_api, rss, greenhouse, lever, remotive, jobicy, himalayas
 
 # =============================================================================
 # Aggregators — broad job boards
@@ -22,6 +22,21 @@ sources:
   - name: HN Who Is Hiring
     type: rss
     url: https://hnrss.org/whoishiring/jobs
+    enabled: true
+
+  - name: Remotive
+    type: remotive
+    url: https://remotive.com/api/remote-jobs
+    enabled: true
+
+  - name: Jobicy
+    type: jobicy
+    url: https://jobicy.com/api/v2/remote-jobs
+    enabled: true
+
+  - name: Himalayas
+    type: himalayas
+    url: https://himalayas.app/jobs/api
     enabled: true
 
   # ===========================================================================

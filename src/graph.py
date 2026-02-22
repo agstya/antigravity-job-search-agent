@@ -202,17 +202,34 @@ def semantic_score_node(state: PipelineState) -> dict:
 
     if dry_run:
         logger.info("Dry run — skipping LLM scoring, assigning default score of 5")
-        for job in filtered_jobs:
+
+        # Sort by keyword match count (highest first) to pick the most relevant
+        def _kw_count(job: JobModel) -> int:
+            for flag in job.flags:
+                if flag.startswith("keyword_matches:"):
+                    try:
+                        return int(flag.split(":")[1])
+                    except (ValueError, IndexError):
+                        pass
+            return 0
+
+        filtered_jobs.sort(key=_kw_count, reverse=True)
+
+        # Limit to top 100 most relevant
+        top_jobs = filtered_jobs[:100]
+        logger.info("Dry run — keeping top %d of %d jobs by keyword relevance", len(top_jobs), len(filtered_jobs))
+
+        for job in top_jobs:
             job.llm_score = 5
             job.is_match = True
             job.llm_reasons = ["Dry run — no LLM scoring performed"]
             job.llm_confidence = "low"
         return {
-            "scored_jobs": filtered_jobs,
-            "matched_jobs": filtered_jobs,
+            "scored_jobs": top_jobs,
+            "matched_jobs": top_jobs,
             "borderline_jobs": [],
-            "total_scored": len(filtered_jobs),
-            "total_matched": len(filtered_jobs),
+            "total_scored": len(top_jobs),
+            "total_matched": len(top_jobs),
         }
 
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

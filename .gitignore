@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Job Search Agent
+reports/
+logs/
+jobs.db
+chroma_db/

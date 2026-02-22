@@ -1,0 +1,49 @@
+# =============================================================================
+# Job Sources Configuration
+# =============================================================================
+# Each source has: name, type, url/company_slug, enabled
+
+sources:
+  - name: RemoteOK
+    type: remoteok_api
+    url: https://remoteok.com/api
+    enabled: true
+
+  - name: We Work Remotely
+    type: rss
+    url: https://weworkremotely.com/remote-jobs.rss
+    enabled: true
+
+  # -- Greenhouse Company Boards -----------------------------------------------
+  # Add companies that use Greenhouse for their job boards.
+  # Find the slug from: https://boards.greenhouse.io/{company_slug}
+
+  - name: Anthropic
+    type: greenhouse
+    company_slug: anthropic
+    enabled: true
+
+  - name: OpenAI
+    type: greenhouse
+    company_slug: openai
+    enabled: true
+
+  - name: Figma
+    type: greenhouse
+    company_slug: figma
+    enabled: false
+
+  # -- Lever Company Boards ----------------------------------------------------
+  # Add companies that use Lever for their job boards.
+  # Find the slug from: https://jobs.lever.co/{company_slug}
+
+  - name: Netflix
+    type: lever
+    company_slug: netflix
+    enabled: false
+
+  # -- Custom RSS Feeds --------------------------------------------------------
+  - name: HN Who Is Hiring
+    type: rss
+    url: https://hnrss.org/whoishiring/jobs
+    enabled: false

@@ -1,0 +1,11 @@
+# Job Search Agent — Cron Schedule
+# =================================
+#
+# Run daily at 7:00 AM local time
+# Edit the path below to match your project directory.
+#
+# To install:
+#   crontab -e
+#   Paste the line below (without the leading #)
+#
+# 0 7 * * * cd /Users/agastya/antigravity/job-search-agent && /usr/bin/env python main.py --mode daily >> logs/cron.log 2>&1

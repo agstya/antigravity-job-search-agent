@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone, timedelta
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langgraph.graph import StateGraph, END
 
@@ -112,8 +112,8 @@ def fetch_jobs_node(state: PipelineState) -> dict:
     """Fetch jobs from all enabled sources."""
     logger.info("=== Node 3: Fetching Jobs ===")
 
-    sources_config = state.get("sources_config", [])
-    errors = list(state.get("errors", []))
+    sources_config = cast(list, state.get("sources_config", []))
+    errors = [*cast(list, state.get("errors") or [])]
 
     try:
         raw_jobs = fetch_all_sources(sources_config)
@@ -135,7 +135,7 @@ def normalize_dates_node(state: PipelineState) -> dict:
     """Normalize date fields to ISO format and clean up job data."""
     logger.info("=== Node 4: Normalizing Dates ===")
 
-    raw_jobs = state.get("raw_jobs", [])
+    raw_jobs = cast("list[JobModel]", state.get("raw_jobs", []))
     for job in raw_jobs:
         if job.posted_date:
             job.posted_date = _normalize_date(job.posted_date)
@@ -162,8 +162,8 @@ def hard_filter_node(state: PipelineState) -> dict:
     """
     logger.info("=== Node 5: Soft Annotation (no hard filter) ===")
 
-    raw_jobs = state.get("raw_jobs", [])
-    criteria = state.get("criteria")
+    raw_jobs = cast(list[JobModel], state.get("raw_jobs", []))
+    criteria = cast(CriteriaModel, state.get("criteria"))
 
     for job in raw_jobs:
         # Compute keyword match count for relevance sorting
@@ -193,9 +193,9 @@ def semantic_score_node(state: PipelineState) -> dict:
     """Score remaining jobs using local Ollama LLM."""
     logger.info("=== Node 6: Semantic Scoring (LLM) ===")
 
-    filtered_jobs = state.get("filtered_jobs", [])
-    criteria = state.get("criteria")
-    dry_run = state.get("dry_run", False)
+    filtered_jobs = cast(list[JobModel], state.get("filtered_jobs", []))
+    criteria = cast(CriteriaModel, state.get("criteria"))
+    dry_run = bool(state.get("dry_run", False))
 
     if not criteria or not filtered_jobs:
         return {"scored_jobs": filtered_jobs, "total_scored": 0}
@@ -213,10 +213,10 @@ def semantic_score_node(state: PipelineState) -> dict:
                         pass
             return 0
 
-        filtered_jobs.sort(key=_kw_count, reverse=True)
+        cast(list, filtered_jobs).sort(key=_kw_count, reverse=True)
 
         # Limit to top 100 most relevant
-        top_jobs = filtered_jobs[:100]
+        top_jobs = cast(list, filtered_jobs)[:100]
         logger.info("Dry run — keeping top %d of %d jobs by keyword relevance", len(top_jobs), len(filtered_jobs))
 
         for job in top_jobs:
@@ -242,8 +242,8 @@ def semantic_score_node(state: PipelineState) -> dict:
                     pass
         return 0
 
-    filtered_jobs.sort(key=_kw_count_full, reverse=True)
-    top_candidates = filtered_jobs[:100]
+    cast(list, filtered_jobs).sort(key=_kw_count_full, reverse=True)
+    top_candidates = cast(list, filtered_jobs)[:100]
     logger.info(
         "Pre-filtered to top %d of %d jobs by keyword relevance for LLM scoring",
         len(top_candidates), len(filtered_jobs),
@@ -255,7 +255,7 @@ def semantic_score_node(state: PipelineState) -> dict:
     scored_jobs = score_jobs_batch(top_candidates, criteria, ollama_url, model)
 
     # Split into matched and borderline
-    min_score = criteria.min_llm_score
+    min_score: int = criteria.min_llm_score if criteria else 7
     matched = [j for j in scored_jobs if j.llm_score is not None and j.llm_score >= min_score]
     borderline = [
         j for j in scored_jobs
@@ -321,8 +321,8 @@ def deduplicate_persist_node(state: PipelineState) -> dict:
     """Deduplicate against prior runs and persist new jobs to SQLite + Chroma."""
     logger.info("=== Node 8: Deduplicate & Persist ===")
 
-    matched_jobs = state.get("matched_jobs", [])
-    run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
+    matched_jobs = cast(list[JobModel], state.get("matched_jobs", []))
+    run_date = str(state.get("run_date", datetime.now().strftime("%Y-%m-%d")))
 
     db_path = os.getenv("DB_PATH", "jobs.db")
     chroma_path = os.getenv("CHROMA_PATH", "./chroma_db")
@@ -377,24 +377,24 @@ def generate_report_node(state: PipelineState) -> dict:
     logger.info("=== Node 9: Generate Report ===")
 
     # Use ALL matched jobs for the report, not just new ones
-    matched_jobs = state.get("matched_jobs", [])
-    scored_jobs = state.get("scored_jobs", [])
-    filtered_jobs = state.get("filtered_jobs", [])
-    new_jobs = state.get("new_jobs", [])
-    borderline_jobs = state.get("borderline_jobs", [])
-    criteria = state.get("criteria")
-    run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
+    matched_jobs = cast(list[JobModel], state.get("matched_jobs", []))
+    scored_jobs = cast(list[JobModel], state.get("scored_jobs", []))
+    filtered_jobs = cast(list[JobModel], state.get("filtered_jobs", []))
+    new_jobs = cast(list[JobModel], state.get("new_jobs", []))
+    borderline_jobs = cast(list[JobModel], state.get("borderline_jobs", []))
+    criteria = cast(CriteriaModel, state.get("criteria"))
+    run_date = str(state.get("run_date", datetime.now().strftime("%Y-%m-%d")))
 
     # Cascade fallback: matched → scored → filtered → new
     # Ensures the report NEVER shows zero results if jobs were fetched
     if matched_jobs:
-        display_source = matched_jobs
+        display_source = cast(list, matched_jobs)
     elif scored_jobs:
-        display_source = scored_jobs
+        display_source = cast(list, scored_jobs)
     elif filtered_jobs:
-        display_source = filtered_jobs[:100]
+        display_source = cast(list, filtered_jobs)[:100]
     else:
-        display_source = new_jobs
+        display_source = cast(list, new_jobs)
 
     # Sort all jobs by date posted (newest first)
     def _date_sort_key(j: JobModel) -> str:
@@ -403,7 +403,7 @@ def generate_report_node(state: PipelineState) -> dict:
     display_source.sort(key=_date_sort_key, reverse=True)
 
     # Show all 100 results
-    display_jobs = display_source[:100]
+    display_jobs = cast(list, display_source)[:100]
 
     # Split into Remote and Non-Remote sections
     from src.models.job import RemoteType
@@ -446,11 +446,13 @@ def send_email_node(state: PipelineState) -> dict:
         logger.info("Email sending disabled (--no-email)")
         return {"email_sent": False}
 
-    report_html = state.get("report_html", "")
-    report_md = state.get("report_md", "")
-    run_date = state.get("run_date", datetime.now().strftime("%Y-%m-%d"))
-    total_new = state.get("total_new", 0)
-    total_fetched = state.get("total_fetched", 0)
+    report_html = str(state.get("report_html") or "")
+    report_md = str(state.get("report_md") or "")
+    run_date = str(state.get("run_date") or datetime.now().strftime("%Y-%m-%d"))
+    total_new = state.get("total_new")
+    if not isinstance(total_new, int): total_new = 0
+    total_fetched = state.get("total_fetched")
+    if not isinstance(total_fetched, int): total_fetched = 0
 
     try:
         gmail_address = os.getenv("GMAIL_ADDRESS", "")
@@ -461,7 +463,8 @@ def send_email_node(state: PipelineState) -> dict:
             logger.warning("Gmail credentials not configured — skipping email")
             return {"email_sent": False}
 
-        total_matched = state.get("total_matched", 0)
+        total_matched = state.get("total_matched")
+        if not isinstance(total_matched, int): total_matched = 0
 
         if total_new > 0:
             subject = f"🔍 {total_new} New Job Matches — {run_date}"
@@ -483,7 +486,7 @@ def send_email_node(state: PipelineState) -> dict:
 
     except Exception as e:
         logger.error("Failed to send email: %s", e)
-        state_errors = list(state.get("errors", []))
+        state_errors = [*cast(list, state.get("errors") or [])]
         state_errors.append(f"Email send failed: {e}")
         return {"email_sent": False, "errors": state_errors}
 

@@ -215,8 +215,8 @@ def semantic_score_node(state: PipelineState) -> dict:
 
         cast(list, filtered_jobs).sort(key=_kw_count, reverse=True)
 
-        # Limit to top 100 most relevant
-        top_jobs = cast(list, filtered_jobs)[:100]
+        # Limit to top 200 most relevant
+        top_jobs = cast(list, filtered_jobs)[:200]
         logger.info("Dry run — keeping top %d of %d jobs by keyword relevance", len(top_jobs), len(filtered_jobs))
 
         for job in top_jobs:
@@ -243,7 +243,7 @@ def semantic_score_node(state: PipelineState) -> dict:
         return 0
 
     cast(list, filtered_jobs).sort(key=_kw_count_full, reverse=True)
-    top_candidates = cast(list, filtered_jobs)[:100]
+    top_candidates = cast(list, filtered_jobs)[:200]
     logger.info(
         "Pre-filtered to top %d of %d jobs by keyword relevance for LLM scoring",
         len(top_candidates), len(filtered_jobs),
@@ -392,7 +392,7 @@ def generate_report_node(state: PipelineState) -> dict:
     elif scored_jobs:
         display_source = cast(list, scored_jobs)
     elif filtered_jobs:
-        display_source = cast(list, filtered_jobs)[:100]
+        display_source = cast(list, filtered_jobs)[:200]
     else:
         display_source = cast(list, new_jobs)
 
@@ -402,11 +402,10 @@ def generate_report_node(state: PipelineState) -> dict:
 
     display_source.sort(key=_date_sort_key, reverse=True)
 
-    # Show all 100 results
-    display_jobs = cast(list, display_source)[:100]
+    # Show all 200 results
+    display_jobs = cast(list, display_source)[:200]
 
     # Split into Remote and Non-Remote sections
-    from src.models.job import RemoteType
     remote_jobs = [j for j in display_jobs if j.remote_type == RemoteType.REMOTE]
     non_remote_jobs = [j for j in display_jobs if j.remote_type != RemoteType.REMOTE]
 

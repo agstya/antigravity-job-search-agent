@@ -262,14 +262,15 @@ def semantic_score_node(state: PipelineState) -> dict:
         if j.llm_score is not None and j.llm_score == min_score - 1
     ]
 
-    # Fallback: if LLM scoring failed for all jobs, treat top candidates as matched
+    # Fallback: if LLM scoring failed for all jobs (or many), treat top candidates as matched
     if not matched and top_candidates:
         logger.warning(
             "LLM scoring produced 0 matches — falling back to top %d keyword-matched jobs",
             len(top_candidates),
         )
         for job in top_candidates:
-            if job.llm_score is None:
+            # If scoring failed (llm_score is 0 or None) or no match found
+            if not job.llm_score or job.llm_score <= 0:
                 job.llm_score = 5
                 job.is_match = True
                 job.llm_reasons = ["LLM scoring unavailable — matched by keyword relevance"]
@@ -460,10 +461,14 @@ def send_email_node(state: PipelineState) -> dict:
             logger.warning("Gmail credentials not configured — skipping email")
             return {"email_sent": False}
 
+        total_matched = state.get("total_matched", 0)
+
         if total_new > 0:
             subject = f"🔍 {total_new} New Job Matches — {run_date}"
+        elif total_matched > 0:
+            subject = f"📋 Daily Report ({total_matched} matches, 0 new) — {run_date}"
         else:
-            subject = f"📋 Job Search Report ({total_fetched} scanned, 0 new) — {run_date}"
+            subject = f"📋 Job Search Report (0 matches) — {run_date}"
 
         send_report_email(
             html_body=report_html,
